@@ -46,13 +46,34 @@ public class FirebaseHelper {
 		System.out.println("Firebase error: " + msg);
 	}
 
+
+	//auth
+
 	static void authStateChanged()
 	{
 		firebaseUser = auth.getCurrentUser();
 		stateChangedListener.loginStateChanged();
 	}
 
-	static void getUserFromKey(String key, GetUserListener listener)
+	boolean getIfSignedIn()
+	{
+		return firebaseUser!=null;
+	}
+
+	static void signOut()
+	{
+		removeDatabaseListeners();
+		User.clearData();
+		auth.signOut();
+	}
+
+
+	//upload data
+
+
+	//download data
+
+	static void getUserFromKey(final String key, final GetUserListener listener)
 	{
 		Query query=root.child("users").child(key);
 
@@ -61,9 +82,9 @@ public class FirebaseHelper {
 			public void onDataChange(DataSnapshot dataSnapshot) {
 				User out=new User
 						(
-								dataSnapshot.child("username").getValue(),
-								dataSnapshot.child("displayName").getValue(),
-								dataSnapshot.child(key).getValue()
+								(String)dataSnapshot.child("username").getValue(),
+								(String)dataSnapshot.child("displayName").getValue(),
+								(String)dataSnapshot.child(key).getValue()
 						);
 
 				listener.userReady(out);
@@ -76,38 +97,38 @@ public class FirebaseHelper {
 		});
 	}
 
-	static void forAllUsersInSnapshot(DataSnapshot data, GetUserListener listenerIn, final VoidListener whenDoneIn)
+	static void forAllUsersInSnapshot(DataSnapshot data, GetUserArrayListener listener)
 	{
-		new ForAllUsersInSnapshotClass(data, listenerIn, whenDoneIn);
+		new ForAllUsersInSnapshotClass(data, listener);
 	}
 
-	static class ForAllUsersInSnapshotClass
+	private static class ForAllUsersInSnapshotClass
 	{
 		int elemLeft;
-		GetUserListener listener;
-		VoidListener whenDone;
+		GetUserArrayListener listener;
+		User[] users;
 
-		ForAllUsersInSnapshotClass(DataSnapshot data, GetUserListener listenerIn, final VoidListener whenDoneIn)
+		ForAllUsersInSnapshotClass(DataSnapshot data, GetUserArrayListener listenerIn)
 		{
 			elemLeft = (int) data.getChildrenCount();
+			users=new User[elemLeft];
 			listener=listenerIn;
-			whenDone=whenDoneIn;
 
 			if (elemLeft == 0) {
-				whenDone.func();
+				listener.userArrayReady(new User[0]);
 			} else {
 				for (DataSnapshot ref : data.getChildren()) {
 					getUserFromKey(ref.getKey(), new GetUserListener() {
 						@Override
 						public void userReady(User user) {
 							if (user != null)
-								listener.userReady(user);
+								users[users.length-elemLeft]=user;
 
 							elemLeft--;
 
 							if (elemLeft<=0)
 							{
-								whenDone.func();
+								listener.userArrayReady(users);
 							}
 						}
 					});
@@ -171,10 +192,11 @@ public class FirebaseHelper {
 		valueListener=new ValueEventListener() {
 			@Override
 			public void onDataChange(DataSnapshot data) {
-				forAllUsersInSnapshot(data, new GetUserListener() {
+				forAllUsersInSnapshot(data, new GetUserArrayListener() {
 					@Override
-					public void userReady(User user) {
-
+					public void userArrayReady(User[] users) {
+						User.friends=users;
+						stateChangedListener.userDataChanged();
 					}
 				});
 			}
@@ -182,7 +204,95 @@ public class FirebaseHelper {
 			@Override
 			public void onCancelled(DatabaseError databaseError) {}
 		};
+
+		databaseListeners.add(new DatabaseListener(query, valueListener));
+
+		//requests in
+
+		query=root.child("requestsByReceiver").child(firebaseUser.getUid());
+
+		valueListener=new ValueEventListener() {
+			@Override
+			public void onDataChange(DataSnapshot data) {
+				forAllUsersInSnapshot(data, new GetUserArrayListener() {
+					@Override
+					public void userArrayReady(User[] users) {
+						User.requestsIn=users;
+						stateChangedListener.userDataChanged();
+					}
+				});
+			}
+
+			@Override
+			public void onCancelled(DatabaseError databaseError) {}
+		};
+
+		databaseListeners.add(new DatabaseListener(query, valueListener));
 	}
+
+	static void getFriendStatusOfUser(String other, GetFriendStatusListener listenerIn)
+	{
+		new GetFriendStatusOfUserClass(other, listenerIn);
+	}
+
+	private static class GetFriendStatusOfUserClass
+	{
+		User.FriendStatus status;
+		GetFriendStatusListener listener;
+		boolean isFriendDone = false, requestOutDone = false, requestInDone = false;
+
+		GetFriendStatusOfUserClass(String other, GetFriendStatusListener listenerIn)
+		{
+			status = new User.FriendStatus();
+			listener=listenerIn;
+
+			root.child("friendsByUser").child(User.me.key).child(other).addListenerForSingleValueEvent(new ValueEventListener() {
+				@Override
+				public void onDataChange(DataSnapshot data) {
+					status.isFriend=data.exists();
+					isFriendDone=true;
+					downloadDone();
+				}
+
+				@Override
+				public void onCancelled(DatabaseError databaseError) {}
+			});
+
+			root.child("requestsBySender").child(User.me.key).child(other).addListenerForSingleValueEvent(new ValueEventListener() {
+				@Override
+				public void onDataChange(DataSnapshot data) {
+					status.requestOut=data.exists();
+					requestOutDone=true;
+					downloadDone();
+				}
+
+				@Override
+				public void onCancelled(DatabaseError databaseError) {}
+			});
+
+			root.child("requestsByReceiver").child(User.me.key).child(other).addListenerForSingleValueEvent(new ValueEventListener() {
+				@Override
+				public void onDataChange(DataSnapshot data) {
+					status.requestIn=data.exists();
+					requestInDone=true;
+					downloadDone();
+				}
+
+				@Override
+				public void onCancelled(DatabaseError databaseError) {}
+			});
+		}
+
+		private void downloadDone() {
+
+			if (isFriendDone && requestOutDone && requestInDone) {
+				listener.friendStatusReady(status);
+			}
+		}
+	}
+
+
+	//listener interfaces
 
 	public interface StateChangedListener
 	{
@@ -193,6 +303,16 @@ public class FirebaseHelper {
 	public interface GetUserListener
 	{
 		void userReady(User user);
+	}
+
+	public interface GetUserArrayListener
+	{
+		void userArrayReady(User[] users);
+	}
+
+	public interface GetFriendStatusListener
+	{
+		void friendStatusReady(User.FriendStatus status);
 	}
 
 	public interface VoidListener

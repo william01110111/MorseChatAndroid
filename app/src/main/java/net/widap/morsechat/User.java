@@ -26,4 +26,18 @@ public class User
 		username = usernameIn;
 		key = keyIn;
 	}
+
+	public static void clearData()
+	{
+		me=new User();
+		friends=new User[0];
+		requestsIn=new User[0];
+		FirebaseHelper.stateChangedListener.userDataChanged();
+	}
+
+	public static class FriendStatus {
+		public boolean isFriend = false;
+		public boolean requestOut = false;
+		public boolean requestIn = false;
+	}
 }
