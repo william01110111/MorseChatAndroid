@@ -1,0 +1,42 @@
+{
+  "project_info": {
+    "project_number": "346710475309",
+    "firebase_url": "https://morsechat-9cfc5.firebaseio.com",
+    "project_id": "morsechat-9cfc5",
+    "storage_bucket": "morsechat-9cfc5.appspot.com"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:346710475309:android:b18457b253f7391a",
+        "android_client_info": {
+          "package_name": "net.widap.morsechat"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "346710475309-klagscl59qeajptsn91kthhisj6tfqof.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDwAW8-3fiJCxtOTQs_pbPWmjKm_7Vi9YQ"
+        }
+      ],
+      "services": {
+        "analytics_service": {
+          "status": 1
+        },
+        "appinvite_service": {
+          "status": 1,
+          "other_platform_oauth_client": []
+        },
+        "ads_service": {
+          "status": 2
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
