@@ -46,13 +46,59 @@ public class FirebaseHelper {
 		System.out.println("Firebase error: " + msg);
 	}
 
+	static void checkIfUsernameAvailable(String name, boolean ignoreMe, final BoolListener listener) {
+
+		if (ignoreMe && name.toLowerCase() == User.me.username.toLowerCase()) {
+			listener.func(true);
+			return;
+		}
+
+		Query query = root.child("users").orderByChild("lowercase").equalTo(name.toLowerCase());
+
+		query.addListenerForSingleValueEvent(new ValueEventListener() {
+			@Override
+			public void onDataChange(DataSnapshot data) {
+				listener.func(data.exists());
+			}
+
+			@Override
+			public void onCancelled(DatabaseError databaseError) {}
+		});
+	}
+
 
 	//auth
 
 	static void authStateChanged()
 	{
+		initialLoginAttemptDone=true;
+
 		firebaseUser = auth.getCurrentUser();
-		stateChangedListener.loginStateChanged();
+
+		if (stateChangedListener!=null)
+			stateChangedListener.loginStateChanged();
+
+		if (firebaseUser!=null)
+		{
+			getUserFromKey(firebaseUser.getUid(), new GetUserListener() {
+				@Override
+				public void userReady(User user) {
+					if (user!=null)
+					{
+						addDatabaseListeners();
+					}
+					else
+					{
+						initialAccountSetupDone=false;
+						createUser();
+					}
+				}
+			});
+		}
+		else
+		{
+			User.clearData();
+		}
 	}
 
 	boolean getIfSignedIn()
@@ -69,6 +115,59 @@ public class FirebaseHelper {
 
 
 	//upload data
+
+	static void createUser() {
+
+		User.getUniqueUsername(new User(User.me.displayName, User.me.displayName, firebaseUser.getUid()), new GetUserListener() {
+					@Override
+					public void userReady(User user) {
+						uploadMe(user, new SucceedFailListener() {
+							@Override
+							public void success() {
+								addDatabaseListeners();
+							}
+
+							@Override
+							public void fail(String err) {
+								User.clearData();
+								error(err);
+							}
+						});
+					}
+				});
+	}
+
+	static void uploadMe(final User newMe, final SucceedFailListener listener) {
+
+		String error = User.checkUsername(newMe.username);
+
+		if (error != null) {
+			listener.fail(error);
+			return;
+		}
+
+		if (newMe.displayName.isEmpty()) {
+			listener.fail("Display name required");
+			return;
+		}
+
+		checkIfUsernameAvailable(newMe.username, true, new BoolListener() {
+			@Override
+			public void func(boolean available) {
+				if (available) {
+					DatabaseReference ref=root.child("users").child(newMe.key);
+					ref.child("displayName").setValue(newMe.displayName);
+					ref.child("username").setValue(newMe.username);
+					ref.child("lowercase").setValue(newMe.username.toLowerCase());
+					User.me = newMe;
+					stateChangedListener.userDataChanged();
+					listener.success();
+				} else {
+					listener.fail("Username already taken");
+				}
+			}
+		});
+	}
 
 
 	//download data
@@ -318,6 +417,17 @@ public class FirebaseHelper {
 	public interface VoidListener
 	{
 		void func();
+	}
+
+	public interface BoolListener
+	{
+		void func(boolean var);
+	}
+
+	public interface SucceedFailListener
+	{
+		void success();
+		void fail(String err);
 	}
 
 	public static class DatabaseListener
