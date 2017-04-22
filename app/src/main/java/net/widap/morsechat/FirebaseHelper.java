@@ -4,6 +4,8 @@ import android.support.annotation.NonNull;
 import android.util.Log;
 import android.view.SurfaceHolder;
 
+import com.google.android.gms.tasks.OnCompleteListener;
+import com.google.android.gms.tasks.Task;
 import com.google.firebase.auth.*;
 import com.google.firebase.database.*;
 
@@ -17,8 +19,8 @@ public class FirebaseHelper {
 	private static FirebaseUser firebaseUser;
 	private static FirebaseAuth auth;
 	private static DatabaseReference root;
-	private static boolean initialLoginAttemptDone = false;
-	private static boolean initialAccountSetupDone = true;
+	public static boolean initialLoginAttemptDone = false;
+	public static boolean initialAccountSetupDone = true;
 	public static StateChangedListener stateChangedListener;
 	private static ArrayList<DatabaseListener> databaseListeners = new ArrayList<>();
 	//var loginChangedCallback: (() -> Void)?
@@ -36,6 +38,7 @@ public class FirebaseHelper {
 		auth.addAuthStateListener(new FirebaseAuth.AuthStateListener() {
 			@Override
 			public void onAuthStateChanged(@NonNull FirebaseAuth firebaseAuth) {
+				auth=firebaseAuth;
 				authStateChanged();
 			}
 		});
@@ -101,9 +104,29 @@ public class FirebaseHelper {
 		}
 	}
 
-	boolean getIfSignedIn()
+	static boolean isSignedIn()
 	{
 		return firebaseUser!=null;
+	}
+
+	static void signInWithEmail(String email, String password) {
+
+		Task<AuthResult> authResultTask;
+		authResultTask=auth.signInWithEmailAndPassword(email, password);
+
+		authResultTask.addOnCompleteListener(new OnCompleteListener<AuthResult>() {
+			@Override
+			public void onComplete(@NonNull Task<AuthResult> task) {
+
+			}
+		});
+	}
+
+	static void  createAccountWithEmail(String email, String displayName, String password) {
+
+		User.me.displayName = displayName;
+
+		auth.createUserWithEmailAndPassword(email, password);
 	}
 
 	static void signOut()
@@ -165,6 +188,50 @@ public class FirebaseHelper {
 				} else {
 					listener.fail("Username already taken");
 				}
+			}
+		});
+	}
+
+
+	//delete account
+
+	static void deleteAccount() {
+
+		if (firebaseUser!=null) {
+			deleteAccountData();
+
+			firebaseUser.delete();
+			signOut();
+		}
+	}
+
+	private static void deleteAccountData() {
+
+		deleteCounterparts(root.child("friendsByUser"), User.me.key, root.child("friendsByUser"));
+
+		deleteCounterparts(root.child("requestsBySender"), User.me.key, root.child("requestsByReceiver"));
+
+		deleteCounterparts(root.child("requestsByReceiver"), User.me.key, root.child("requestsBySender"));
+
+		root.child("chatsByReciever").child(User.me.key).removeValue();
+
+		root.child("users").child(User.me.key).removeValue();
+	}
+
+	private static void deleteCounterparts(final DatabaseReference query1, final String child, final DatabaseReference query2) {
+		query1.child(child).addListenerForSingleValueEvent(new ValueEventListener() {
+			@Override
+			public void onDataChange(DataSnapshot dataSnapshot) {
+				for (DataSnapshot i: dataSnapshot.getChildren()) {
+					query2.child(i.getKey()).child(child).removeValue();
+				}
+
+				query1.child(child).removeValue();
+			}
+
+			@Override
+			public void onCancelled(DatabaseError databaseError) {
+
 			}
 		});
 	}
